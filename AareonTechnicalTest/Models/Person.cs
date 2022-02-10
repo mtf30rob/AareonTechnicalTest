@@ -5,7 +5,7 @@ namespace AareonTechnicalTest.Models
     public class Person
     {
         [Key]
-        public int Id { get; }
+        public int Id { get; internal set; }
 
         public string Forename { get; set; }
 
