@@ -1,0 +1,139 @@
+name: $(date:yyyy).$(date:MMdd)$(rev:.r)
+
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+parameters:
+
+  - name: runTests
+    displayName: 'Include tests?'
+    type: boolean
+    default: true
+  
+  - name: publishArtifacts
+    displayName: 'Publish Artifacts?'
+    type: boolean
+    default: true
+
+  - name: deployToTest
+    displayName: 'Deploy to Test?'
+    type: boolean
+    default: true
+
+variables:
+  buildConfiguration: 'Release'
+
+  # To ignore SSL error uncomment the below variable
+  VSTS_ARM_REST_IGNORE_SSL_ERRORS: true
+
+
+stages:
+
+
+
+####   Build   ####
+
+- stage: Build
+  displayName: Build
+
+  jobs:
+  - job: Build
+    displayName: Build
+    steps:  
+
+    - task: DotNetCoreCLI@2
+      displayName: 'dotnet build $(buildConfiguration)'
+      inputs:
+        command: 'build'
+        projects: 'AareonTechnicalTest.sln'
+        arguments: '--configuration $(buildConfiguration)'
+        includeNuGetOrg: true
+        verbosityRestore: 'Normal'
+
+    - task: DotNetCoreCLI@2
+      displayName: dotnet test
+      condition: eq(${{parameters.runTests}}, true)
+      inputs:
+        command: test
+        projects: 'AareonTechnicalTest.sln'
+        arguments: '--configuration $(BuildConfiguration) /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura'
+        nobuild: true
+        testRunTitle: 'AareonTechnicalTest Test Run'
+    
+    - task: DotNetCoreCLI@2
+      displayName: 'Publish API'
+      condition: eq(${{parameters.publishArtifacts}}, true)
+      inputs:
+        command: 'publish'
+        publishWebProjects: false
+        projects: '**/AareonTechnicalTest.csproj'
+        arguments: '--output $(Build.BinariesDirectory)/publish_output'
+        zipAfterPublish: false
+        modifyOutputPath: false
+
+    - task: ArchiveFiles@2
+      displayName: 'Zip Published'
+      condition: eq(${{parameters.publishArtifacts}}, true)
+      inputs:
+        rootFolderOrFile: '$(Build.BinariesDirectory)/publish_output'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/build/$(Build.BuildNumber).zip'
+        replaceExistingArchive: true
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Push Artifacts'
+      condition: eq(${{parameters.publishArtifacts}}, true)
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)/build'
+        ArtifactName: 'drop'
+        publishLocation: 'Container'
+
+
+
+
+
+
+
+
+
+####   TEST   ####
+
+- stage: Deploy_to_test
+  displayName: Test Deploy
+  dependsOn: Build
+  condition: and(succeeded(), eq('${{ parameters.deployToTest }}', true))
+
+  jobs:
+
+  - deployment: Deploy_API
+    displayName: API
+    environment: test
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          # Stops the repo being downloaded
+          - download: none
+
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Get build artifacts'
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: 'drop'
+              downloadPath: '$(System.ArtifactsDirectory)'
+
+              
+          - task: AzureWebApp@1
+            displayName: 'Deploy Test API'
+            inputs:
+              azureSubscription: '(subscription identifier here}'
+              appType: 'webApp'
+              appName: 'aareon-techinical-test'
+              package: '$(System.ArtifactsDirectory)/drop/$(Build.BuildNumber).zip'
+              deploymentMethod: 'auto'
