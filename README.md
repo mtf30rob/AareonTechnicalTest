@@ -32,9 +32,3 @@ In a real application I would typically:
 - Document the API in the Swagger UI giving descriptions for actions and examples for parameters
 - Add tests for all controllers and specific tests for complex or critical application logic. I have only implemented tests for the tickets controller in this solution.
 
-
-### EF Core commands
-
-The following ef commands were used to update the db:
-`dotnet ef database update --project AareonTechnicalTest/AareonTechnicalTest.csproj`
-`dotnet ef migrations add MigrationName  --project AareonTechnicalTest/AareonTechnicalTest.csproj`
